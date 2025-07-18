@@ -1,0 +1,8 @@
+build
+query*
+target*
+.vscode
+output
+tmp
+scope
+.gitignore

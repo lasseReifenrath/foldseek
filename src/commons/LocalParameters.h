@@ -31,6 +31,7 @@ public:
     static const int ALIGNMENT_TYPE_3DI = 0;
     static const int ALIGNMENT_TYPE_TMALIGN = 1;
     static const int ALIGNMENT_TYPE_3DI_AA = 2;
+    static const int ALIGNMENT_TYPE_LOLALIGN = 3;
 
     static const int TMSCORE_THRESHOLD_MODE_ALIGNMENT = 0;
     static const int TMSCORE_THRESHOLD_MODE_QUERY = 1;
@@ -123,6 +124,8 @@ public:
     std::vector<MMseqsParameter *> makepaddeddb;
     std::vector<MMseqsParameter *> result2structprofile;
     std::vector<MMseqsParameter *> createstructsubdb;
+    std::vector<MMseqsParameter *> fwbw;
+    std::vector<MMseqsParameter *> lolalign;
 
     PARAMETER(PARAM_TMSCORE_THRESHOLD)
     PARAMETER(PARAM_TMSCORE_THRESHOLD_MODE)
@@ -157,6 +160,16 @@ public:
     PARAMETER(PARAM_CHAIN_TM_THRESHOLD)
     PARAMETER(PARAM_INTERFACE_LDDT_THRESHOLD)
 
+    // fwbw
+    PARAMETER(PARAM_MACT)
+    PARAMETER(PARAM_FWBW_GAPOPEN)
+    PARAMETER(PARAM_FWBW_GAPEXTEND)
+    PARAMETER(PARAM_TEMPERATURE)
+
+    // lolAlign
+    PARAMETER(PARAM_MULTIDOMAIN)
+
+
     float tmScoreThr;
     int tmScoreThrMode;
     int tmAlignHitOrder;
@@ -188,6 +201,15 @@ public:
     int dbExtractionMode;
     float distanceThreshold;
     int prostt5SplitLength;
+    
+    // fwbw
+    float mact;
+    float fwbw_gapopen;
+    float fwbw_gapextend;
+    float temperature;
+
+    // LoLalign
+    int multiDomain;
 
     static std::vector<int> getOutputFormat(
         int formatMode, const std::string &outformat, bool &needSequences, bool &need3Di, bool &needBacktrace, bool &needFullHeaders,
