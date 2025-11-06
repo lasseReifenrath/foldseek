@@ -41,8 +41,8 @@ LoLAlign::LoLAlign(unsigned int maxSeqLen, bool computeExactScore)
     lolScoreMatrix = malloc_matrix<float>(maxSeqLen, maxSeqLen);
     probabilityMatrix = malloc_matrix<float>(maxSeqLen, maxSeqLen);
     hiddenLayer = malloc_matrix<float>(maxSeqLen, 3);
-    anchorQuery = malloc_matrix<int>(std::max(numStartAnchors, 2*seedNumber), maxSeqLen);
-    anchorTarget = malloc_matrix<int>(std::max(numStartAnchors, 2*seedNumber), maxSeqLen);
+    anchorQuery = malloc_matrix<int>(numStartAnchors, maxSeqLen);
+    anchorTarget = malloc_matrix<int>(numStartAnchors, maxSeqLen);
     lolDist = (float*)mem_align(ALIGN_FLOAT, maxSeqLen * sizeof(float));
     lolSeqDist = (float*)mem_align(ALIGN_FLOAT, maxSeqLen * sizeof(float));
     lolScoreVec = (float*)mem_align(ALIGN_FLOAT, maxSeqLen * sizeof(float));
