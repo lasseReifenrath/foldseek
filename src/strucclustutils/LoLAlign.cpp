@@ -41,8 +41,8 @@ LoLAlign::LoLAlign(unsigned int maxSeqLen, bool computeExactScore)
     lolScoreMatrix = malloc_matrix<float>(maxSeqLen, maxSeqLen);
     probabilityMatrix = malloc_matrix<float>(maxSeqLen, maxSeqLen);
     hiddenLayer = malloc_matrix<float>(maxSeqLen, 3);
-    anchorQuery = malloc_matrix<int>(numStartAnchors, maxSeqLen);
-    anchorTarget = malloc_matrix<int>(numStartAnchors, maxSeqLen);
+    anchorQuery = malloc_matrix<int>(std::max(numStartAnchors, 2*seedNumber), maxSeqLen);
+    anchorTarget = malloc_matrix<int>(std::max(numStartAnchors, 2*seedNumber), maxSeqLen);
     lolDist = (float*)mem_align(ALIGN_FLOAT, maxSeqLen * sizeof(float));
     lolSeqDist = (float*)mem_align(ALIGN_FLOAT, maxSeqLen * sizeof(float));
     lolScoreVec = (float*)mem_align(ALIGN_FLOAT, maxSeqLen * sizeof(float));
@@ -187,7 +187,7 @@ Matcher::result_t LoLAlign::align(unsigned int dbKey, float* targetX, float* tar
     for (int startAnchor = 0; startAnchor < numStartAnchors; startAnchor++) {
         anchorLength[startAnchor] = 0;
         newAnchorLength[startAnchor] = 0;
-        for(int i = 0; i <= maxAnchorLen; i++){
+        for(int i = 0; i < maxAnchorLen; i++){
             anchorQuery[startAnchor][i] = 0;
             anchorTarget[startAnchor][i] = 0;
 
