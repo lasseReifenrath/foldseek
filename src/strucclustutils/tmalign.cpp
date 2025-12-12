@@ -386,9 +386,11 @@ int runStructureAligner(int argc, const char **argv, const Command& command, boo
         } else {
             delete tmaligner[i];
         }
+
         
         delete tcoords[i];
     }
+
 
     if (sameDB == false) {
         delete tdbr;
