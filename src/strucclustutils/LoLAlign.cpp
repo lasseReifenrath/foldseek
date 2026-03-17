@@ -26,10 +26,12 @@
 #include <omp.h>
 #endif
 
-LoLAlign::LoLAlign(unsigned int maxSeqLen, bool computeExactScore)
+LoLAlign::LoLAlign(unsigned int maxSeqLen, bool computeExactScore, int candidateSeeds, int refineSeeds)
         : xtm(maxSeqLen), ytm(maxSeqLen), xt(maxSeqLen),
           r1(maxSeqLen), r2(maxSeqLen), computeExactScore(computeExactScore)
 {
+    numStartAnchors = candidateSeeds;
+    seedNumber = refineSeeds;
     queryX = (float*)mem_align(ALIGN_FLOAT, maxSeqLen * sizeof(float));
     queryY = (float*)mem_align(ALIGN_FLOAT, maxSeqLen * sizeof(float));
     queryZ = (float*)mem_align(ALIGN_FLOAT, maxSeqLen * sizeof(float));
@@ -53,6 +55,7 @@ LoLAlign::LoLAlign(unsigned int maxSeqLen, bool computeExactScore)
     anchorLength = new int[numStartAnchors];
     newAnchorLength = new int[numStartAnchors];
     gaps = new int[4]{0, 0, 0, 0};
+
 
     finalAnchorQuery = nullptr;
     finalAnchorTarget = nullptr;
@@ -220,7 +223,7 @@ Matcher::result_t LoLAlign::align(unsigned int dbKey, float* targetX, float* tar
             for (int i = startAnchorLength; i < queryLen - startAnchorLength; ++i) {
                 for (int j = startAnchorLength; j < targetLen - startAnchorLength; ++j) {
                     float alignProb = fwbwaln->getProbability(i, j);
-                    if (alignProb > maxScore) {
+                    if (alignProb >= maxScore) {
                         maxScore = alignProb;
                         maxIndexX = i;
                         maxIndexY = j;
@@ -258,6 +261,7 @@ Matcher::result_t LoLAlign::align(unsigned int dbKey, float* targetX, float* tar
         for (int i = 0; i < diagLength; i++) {
             lolScoreVec[i] = lolScoreMatrix[startRow + i][startCol + i];
         }
+        lolScoreVec[std::min(maxIndexX, maxIndexY)] += 200;
          
         for (int i = -startAnchorLength; i < startAnchorLength; i++) {
             for (int j = 0; j < diagLength; j++) {
@@ -528,6 +532,7 @@ Matcher::result_t LoLAlign::align(unsigned int dbKey, float* targetX, float* tar
 
     for(int i = 0; i < queryLen; i++){
         lolScoreVecSh[i] = 0;
+        lolScoreVec[i] = 0;
         
     }
     for (int i = 0; i < anchorLength[maxLolIdx]; i++) {
@@ -564,8 +569,8 @@ Matcher::result_t LoLAlign::align(unsigned int dbKey, float* targetX, float* tar
     float nanCheck = 0;
     maxLolScore = 0;
     for (int i = 0; i < anchorLength[maxLolIdx]; i++) {
+        maxLolScore += lolScoreVec[i];
         if(lolScoreVecSh[i] != 0){
-            maxLolScore += lolScoreVec[i];
             nanCheck = lolScoreVec[i] / (lolScoreVecSh[i]);
             normalizedLolscoreSelfhit +=  nanCheck == nanCheck ? nanCheck : 0;
         }
@@ -769,6 +774,7 @@ void LoLAlign::initQuery(float* x, float* y, float* z, Sequence& qSeqAA, Sequenc
     qqScore = 0;
     for (int i = 0; i < queryLen; i++) {
         diScore += lolScoreVec[i];
+        lolScoreVec[i] = 0;
     }
 
     for (int i = 0; i < queryLen; i++) {
