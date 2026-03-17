@@ -1,0 +1,7 @@
+runlol.sh
+runlol_cigar.sh
+
+# local build & scratch
+build/
+tmp/
+pdb_fail/

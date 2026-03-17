@@ -17,7 +17,7 @@
 
 class LoLAlign {
 public:
-    LoLAlign(unsigned int maxSeqLen, bool exact);
+    LoLAlign(unsigned int maxSeqLen, bool exact, int candidateSeeds, int refineSeeds);
     ~LoLAlign();
 
     void computeForwardScoreMatrix(
