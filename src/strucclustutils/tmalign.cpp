@@ -151,7 +151,7 @@ int runStructureAligner(int argc, const char **argv, const Command& command, boo
 #endif
         if (runLoLAlign) {
             lolaligner[thread_idx] = new LoLAlign(std::max(qdbr.sequenceReader->getMaxSeqLen() + 1,
-                                                       tdbr->sequenceReader->getMaxSeqLen() + 1), false);
+                                                       tdbr->sequenceReader->getMaxSeqLen() + 1), false, par.candidateSeeds, par.refineSeeds);
             fwbwAligner[thread_idx] = new FwBwAligner(-par.fwbwGapopen, -par.fwbwGapextend, par.temperature, 0, qdbr.sequenceReader->getMaxSeqLen() + 1, tdbr->sequenceReader->getMaxSeqLen() + 1, par.blocklen, 0);                
             tSeqAAs[thread_idx] = new Sequence(par.maxSeqLen, Parameters::DBTYPE_AMINO_ACIDS, subMatAA, 0, false, par.compBiasCorrection);
             tSeq3Dis[thread_idx] = new Sequence(par.maxSeqLen, Parameters::DBTYPE_AMINO_ACIDS, subMat3Di, 0, false, par.compBiasCorrection);
@@ -194,7 +194,6 @@ int runStructureAligner(int argc, const char **argv, const Command& command, boo
         unsigned int queryId = qdbr.sequenceReader->getId(queryKey);
         char *querySeq = qdbr.sequenceReader->getData(queryId, 0);
         int queryLen = static_cast<int>(qdbr.sequenceReader->getSeqLen(queryId));
-
         if (runLoLAlign) {
             char *query3diSeq = qdbr3Di->sequenceReader->getData(queryId, 0);
             qSeqAA->mapSequence(id, queryKey, querySeq, queryLen);
@@ -223,7 +222,12 @@ int runStructureAligner(int argc, const char **argv, const Command& command, boo
             thread_idx = static_cast<unsigned int>(omp_get_thread_num());
 #endif
             if (runLoLAlign) {
+		
                 lolaligner[thread_idx]->initQuery(qdata, &qdata[queryLen], &qdata[queryLen + queryLen], *qSeqAA, *qSeq3Di, queryLen, *subMatAA, max_targetLen, par.multiDomain);
+                lolaligner[thread_idx]->setStartAnchorLength(3);
+                if (queryLen <= 15) {
+                       lolaligner[thread_idx]->setStartAnchorLength(0);
+                }
             } else {
                 tmaligner[thread_idx]->initQuery(qdata, &qdata[queryLen], &qdata[queryLen + queryLen],
                                              querySeq, queryLen);
@@ -256,9 +260,16 @@ int runStructureAligner(int argc, const char **argv, const Command& command, boo
                         backtrace.clear();
                         backtrace.append(SSTR(queryLen));
                         backtrace.append(1, 'M');
-                        tmpResult = Matcher::result_t(dbKeys[i], 100, 1.0, 1.0, 1.0,
+                        if (runLoLAlign) { 
+                        tmpResult = Matcher::result_t(dbKeys[i], 10000, 1.0, 1.0, 1.0,
                                                       1.0, std::max(queryLen, queryLen), 0, queryLen - 1,
                                                       queryLen, 0, queryLen - 1, queryLen, backtrace);
+                        }else{
+                            tmpResult = Matcher::result_t(dbKeys[i], 100, 1.0, 1.0, 1.0,
+                                                      1.0, std::max(queryLen, queryLen), 0, queryLen - 1,
+                                                      queryLen, 0, queryLen - 1, queryLen, backtrace);
+                        }
+
                     } else {
                         tmpResult.dbKey = dbKeys[i];
                         char *targetSeq = tdbr->sequenceReader->getData(targetId, thread_idx);
@@ -282,16 +293,16 @@ int runStructureAligner(int argc, const char **argv, const Command& command, boo
                             float *tdata = tcoords[thread_idx]->read(tcadata, targetLen, tCaLength);
 
                             float TMscore;
-
+ 
 
                             if (runLoLAlign) {
-                                if (targetLen <= 10) {
+                                if (targetLen <= 15 && queryLen > 15) {
                                     lolaligner[thread_idx]->setStartAnchorLength(1);
                                     if (targetLen < 4) {
                                         lolaligner[thread_idx]->setStartAnchorLength(0);
                                     }
                                     tmpResult = lolaligner[thread_idx]->align(dbKeys[i], tdata, &tdata[targetLen], &tdata[targetLen + targetLen], *tSeqAAs[thread_idx], *tSeq3Dis[thread_idx], targetLen, *subMatAA, fwbwAligner[thread_idx], par.multiDomain);
-                                    if (queryLen > 10) {
+                                    if (queryLen > 15) {
                                         lolaligner[thread_idx]->setStartAnchorLength(3);
                                     }
                                 } else {
