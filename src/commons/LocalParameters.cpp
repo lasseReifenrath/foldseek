@@ -50,7 +50,8 @@ LocalParameters::LocalParameters() :
         PARAM_STRUCTTY_MODE(PARAM_STRUCTTY_MODE_ID, "--structty-mode", "StrucTTY color mode", "Color mode for the StrucTTY viewer:\n0: protein\n1: chain\n2: rainbow\n3: plddt\n4: interface\n5: conservation\n6: align\n7: align-fs\n8: align-near", typeid(int), (void *) &structtyMode, "^[0-8]{1}$", MMseqsParameter::COMMAND_ALIGN | MMseqsParameter::COMMAND_EXPERT),
         PARAM_STRUCTTY_SS(PARAM_STRUCTTY_SS_ID, "--structty-ss", "StrucTTY secondary structure", "Show secondary structure (helix/sheet) in the StrucTTY viewer", typeid(bool), (void *) &structtyShowStructure, "", MMseqsParameter::COMMAND_ALIGN | MMseqsParameter::COMMAND_EXPERT),
         PARAM_CANDIDATE_SEEDS(PARAM_CANDIDATE_SEEDS_ID, "--candidate-seeds", "Candidate seeds", "Number of candidate seeds to consider for expansion", typeid(int), (void *) &candidateSeeds, "^([1-9][0-9]?|100)$"),
-        PARAM_REFINE_SEEDS(PARAM_REFINE_SEEDS_ID, "--refine-seeds", "Refine seeds", "Whether to refine seeds by re-aligning top candidate seeds and picking the best one for expansion", typeid(int), (void *) &refineSeeds, "^([1-9][0-9]?|100)$")
+        PARAM_REFINE_SEEDS(PARAM_REFINE_SEEDS_ID, "--refine-seeds", "Refine seeds", "Whether to refine seeds by re-aligning top candidate seeds and picking the best one for expansion", typeid(int), (void *) &refineSeeds, "^([1-9][0-9]?|100)$"),
+        PARAM_LOLALIGN_FWBW_SCALED(PARAM_LOLALIGN_FWBW_SCALED_ID, "--lolalign-fwbw-scaled", "LoLalign scaled FwBw", "Forward-backward arithmetic of LoLalign: 0: log-space blocks, 1: scaled mantissas with power-of-two exponents (faster, more accurate)", typeid(int), (void *) &lolalignFwbwScaled, "^[0-1]{1}$")
         {
     PARAM_ALIGNMENT_MODE.description = "How to compute the alignment:\n0: automatic\n1: only score and end_pos\n2: also start_pos and cov\n3: also seq.id";
     PARAM_ALIGNMENT_MODE.regex = "^[0-3]{1}$";
@@ -140,6 +141,7 @@ LocalParameters::LocalParameters() :
     lolalign.push_back(&PARAM_MULTIDOMAIN);
     lolalign.push_back(&PARAM_CANDIDATE_SEEDS);
     lolalign.push_back(&PARAM_REFINE_SEEDS);
+    lolalign.push_back(&PARAM_LOLALIGN_FWBW_SCALED);
     lolalign.push_back(&PARAM_MIN_SEQ_ID);
     lolalign.push_back(&PARAM_PRELOAD_MODE);
     lolalign.push_back(&PARAM_MAX_REJECTED);
@@ -439,6 +441,7 @@ LocalParameters::LocalParameters() :
     multiDomain = 1;
     candidateSeeds = 10;
     refineSeeds = 3;
+    lolalignFwbwScaled = 1;
 
     // view
     viewResults = false;
