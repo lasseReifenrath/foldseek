@@ -74,7 +74,7 @@ typedef struct {
 } s_align;
 
 typedef struct {
-    uint16_t score;
+    uint32_t score;
     int32_t ref;    //0-based position
     int32_t read;   //alignment ending position on read, 0-based
 } alignment_end;
@@ -190,6 +190,30 @@ public:
    int ungapped_alignment(const unsigned char *db_sequence,
                           int32_t db_length);
 
+  /*!	@function	Same as ungapped_alignment, but additionally reports where the maximum was
+   found, as the diagonal of the best-scoring cell:
+
+       bestDiagonal = queryPos - dbPos
+
+   Callers that want to score a second channel along the alignment the ungapped pass found would
+   otherwise have to rescan the whole matrix to recover that diagonal, which is O(qLen * dbLen);
+   this hands it over for the price of one horizontal max per db position. The score returned is
+   identical to the 2-argument form -- use that one whenever the diagonal is not needed, so the
+   hot path stays untouched.
+
+   Note the score saturates at 255 - profile->bias (the accumulator is unsigned 8-bit), so on
+   strongly matching pairs several diagonals can reach the ceiling; the reported one is then the
+   first to get there rather than the true argmax.
+
+   @param	db_sequence	target sequence in numeric encoding
+   @param	db_length	length of the target sequence
+   @param	bestDiagonal	out: diagonal of the best-scoring cell (0 when the score is 0)
+   @return	max diagonal score
+   */
+   int ungapped_alignment(const unsigned char *db_sequence,
+                          int32_t db_length,
+                          int &bestDiagonal);
+
   /*!	@function	Create the query profile using the query sequence.
    @param	read	pointer to the query sequence; the query sequence needs to be numbers
    @param	readLen	length of the query sequence
@@ -253,13 +277,13 @@ public:
     const static unsigned int PROFILE_SEQ = 4;
 
 private:
+   // Shared body of the two ungapped_alignment overloads. TrackDiagonal is a compile-time flag so
+   // the non-tracking path generates exactly the code it did before this was added.
+   template <bool TrackDiagonal>
+   int ungapped_alignment_impl(const unsigned char *db_sequence, int32_t db_length,
+                               int *bestDiagonalOut);
+
     simd_data* simdData;
-
-    // target variables
-    int segSize;
-
-    // needed for type checking query and target databases
-    bool isQueryProfile;
 
     typedef struct {
         uint32_t* seq;
@@ -291,11 +315,26 @@ private:
     float *tmp_composition_bias;
     int8_t * scorePerCol;
     short * profile_word_linear_data;
-    int32_t * profile_int_linear_data;
+
+    int segSize;
+    size_t queryCapacity;
+    size_t targetCapacity;
+    size_t blockQueryCapacity;
+    size_t blockTargetCapacity;
+    int aaSize;
 
     bool aaBiasCorrection;
     float aaBiasCorrectionScale;
     SubstitutionMatrix * subMat;
+
+    void resizeQuery(size_t queryLen);
+    void resizeTarget(size_t targetLen);
+    void resizeBlockTrace(size_t queryLen, size_t targetLen);
+    void allocQuery();
+    void freeQuery();
+    void allocTarget();
+    void freeTarget();
+    void freeBlockTrace();
 
     uint8_t computeBias(const int32_t target_length, const int8_t *mat, const int32_t aaSize);
 
