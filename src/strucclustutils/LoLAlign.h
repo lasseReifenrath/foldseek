@@ -59,14 +59,18 @@ public:
                                             float T, float go, float ge,
                                             size_t rows, size_t start, size_t end, size_t memcpyCols, size_t targetLen,
                                             float** zm, float* zmax, float** zmBlock, float* zeBlock, float* zfBlock, int* gaps);
-    void calcDistMatrix(float* x, float* y, float* z, size_t len, float** d, bool cutoff);
+    void calcQueryNeighbors(const float* x, const float* y, const float* z, int len);
+    void linkAnchors(int anchorLen);
+    void unlinkAnchors(int anchorLen);
+    void anchorRowScore(int i, bool withTargetDist, float* score);
     float calcDiscore(int* anchorQuery, int* anchorTarget, int anchorLength);
-    void lolMatrix(const int* newQuery, const int* newTarget, int anchorLength, int* gaps, float** distanceij, float** distancekl, float** lolScoreMatrix, float** hiddenLayer, float* dDist);
-    void lolScore(float* dist, float* dSeq, float* score, int length, float** hiddenLayer);
+    void lolMatrix(const int* newQuery, const int* newTarget, int anchorLength, int* gaps, float** lolScoreMatrix);
+    const float* targetDistRow(int r);
+    void lolScore(const float* dist, const float* dSeq, float* score, int length);
     void setStartAnchorLength(int length) { startAnchorLength = length; }
     
 
-    void lolScore(float* dDist, float dSeq, float* score, int length, int start, float** hiddenLayer);
+    void lolScore(const float* dt, float dq, float dSeq, float* score, int length, int start);
     void computeDiScore(
         unsigned char* targetNumAA,
         unsigned char* targetNum3Di,
@@ -81,12 +85,34 @@ private:
     float* queryX;
     float* queryY;
     float* queryZ;
-    float* targetX;
-    float* targetY;
-    float* targetZ;
+    // CA coordinates of the current target; row r of its distance matrix is computed when first needed in a pair
+    // and packed into distancekl (targetDistRows[r], targetDistStride floats apart)
+    const float *targetCaX, *targetCaY, *targetCaZ;
+    int targetCaLen;
+    size_t targetDistStride;
+    int targetDistRowsUsed;
+    std::vector<float*> targetDistRows;
     float** scoreForward;
     float** probabilityMatrix;
-    float** distanceij;
+    // query residues closer than 20 A to residue i and their distances:
+    // queryNbIdx/queryNbDist[queryNbStart[i], queryNbStart[i + 1])
+    std::vector<int> queryNbStart;
+    std::vector<int> queryNbIdx;
+    std::vector<float> queryNbDist;
+    // lolMatrix: position of each new anchor in its neighbor list
+    std::vector<int> queryNbCursor;
+    // final anchors at each query position as linked lists, see linkAnchors
+    std::vector<int> firstAnchorAt;
+    std::vector<int> nextAnchorAt;
+    // refinement FwBw gaps of the previous iteration and the iteration that last changed each score row
+    struct FwbwGap { int rowStart, rowEnd, colStart, colEnd; float temperature, maxP; };
+    std::vector<FwbwGap> fwbwGapsPrev, fwbwGapsCur;
+    std::vector<int> scoreRowIteration;
+    int lolIteration = 0;
+    // log(1 + k) for sequence separation k
+    std::vector<float> logSeparation;
+    // largest P of each row
+    std::vector<float> rowMaxP;
     float** distancekl;
     float** lolScoreMatrix;
     int** anchorQuery;
@@ -103,6 +129,7 @@ private:
     float lolGe = -0.0;
     float lolMinP = 0.7;
     float lolT = 4;
+    // lolScore: hidden layer of the scalar parts
     float** hiddenLayer;
     int* startAnchorIndex;
     float* startAnchorScores;
@@ -125,6 +152,21 @@ private:
 
     unsigned char* queryNumAA;
     unsigned char* queryNum3Di;
+    static const int ALPHABET_SIZE_3DI = 20;
+    // 1.4 * AA + 2.1 * 3Di scores of computeForwardScoreMatrix and addForwardScoreMatrix: one row per (AA, 3Di)
+    // letter pair of the query, column AA * ALPHABET_SIZE_3DI + 3Di of the target pair; empty if a letter is
+    // outside the matrices
+    int fwdCodeCount;
+    std::vector<float> fwdTable, fwdAddTable;
+    std::vector<int> fwdQueryRow;
+    std::vector<int> fwdTargetCode;
+    std::vector<unsigned char> fwdCodeAA, fwdCode3Di;
+    bool mapTargetCodes(const unsigned char* targetNumAA, const unsigned char* targetNum3Di, int targetLen);
+    void initForwardTables(const SubstitutionMatrix& subMatAA);
+    void forwardScores(const unsigned char* qAA, const unsigned char* q3Di, int qLen, const unsigned char* tAA,
+                       const unsigned char* t3Di, int tLen, const SubstitutionMatrix& subMatAA, float** scoreForward);
+    void addForwardScores(const unsigned char* qAA, const unsigned char* q3Di, int qLen, const unsigned char* tAA,
+                          const unsigned char* t3Di, int tLen, const SubstitutionMatrix& subMatAA, float** scoreForward);
     float* lolScoreVecSh;
 
     LDDTCalculator*      lddtcalc;   // foldseek LDDT (one of the LoLAlignProbability features)
@@ -152,7 +194,7 @@ private:
     Coordinates xtm, ytm, xt, r1, r2;
     bool computeExactScore;
     int* invmap;
-    const float scoringMatrix3Di[20][20] = {
+    const float scoringMatrix3Di[ALPHABET_SIZE_3DI][ALPHABET_SIZE_3DI] = {
         // A   B   C   D   E   F   G   H   I   J   K   L   M   N   O   P   Q   R   S   T
         {10, -1,  1,  7,  6,  2,  2, -4,  1, -1, -6, -2, -1,  4, -1, -5, -1, -5,  3,  2}, // A
         {-1,  7, -4, -5, -3, -2, -1, -10, -10,  1, -11,  1, -2,  2,  1,  1, -6,  1, -5, -5}, // B

@@ -169,7 +169,6 @@ private:
     int * align_to_query;
     int * align_to_target;
     float **query_coordinates, **target_coordinates;
-    bool **dists_to_score;
     LDDTCalculator::Grid query_grid;
     std::vector<char> visited_boxes; // per entry of query_grid.box_index, reused across targets
 };

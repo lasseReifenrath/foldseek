@@ -21,7 +21,6 @@ LDDTCalculator::LDDTCalculator(unsigned int maxQueryLength, unsigned int maxTarg
     // one block per matrix, many small allocations make malloc grow the heap of each thread page by page
     query_coordinates = malloc_matrix<float>(maxQueryLength, 3);
     target_coordinates = malloc_matrix<float>(maxTargetLength, 3);
-    dists_to_score = malloc_matrix<bool>(maxQueryLength, maxQueryLength);
     reduce_score = new float[maxAlignLength];
     norm = new float[maxQueryLength];
     query_to_align = new int[maxQueryLength];
@@ -33,7 +32,6 @@ LDDTCalculator::LDDTCalculator(unsigned int maxQueryLength, unsigned int maxTarg
 LDDTCalculator::~LDDTCalculator() {
     free(query_coordinates);
     free(target_coordinates);
-    free(dists_to_score);
     if(reduce_score) {
         delete[] reduce_score;
     }
@@ -61,20 +59,13 @@ void LDDTCalculator::initQuery(unsigned int queryLen, float *qx, float *qy, floa
         query_coordinates[i][1] = qy[i];
         query_coordinates[i][2] = qz[i];
     }
-    // rows of the query length keep the matrix in as few pages as possible
-    for(unsigned int i = 1; i < queryLength; i++) {
-        dists_to_score[i] = dists_to_score[0] + (size_t)i * queryLength;
-    }
-
     query_grid = Grid(query_coordinates, queryLength);
     memset(norm, 0, sizeof(float) * queryLength);
 
     for(unsigned int col = 0; col < queryLength; col++) {
         for (unsigned int row = 0; row < queryLength; row++) {
             bool isClose = (col != row) && (dist2(query_coordinates[row], query_coordinates[col]) < CUTOFF_SQUARED);
-            dists_to_score[col][row] = isClose;
-            dists_to_score[row][col] = isClose;
-            norm[col] += dists_to_score[row][col];
+            norm[col] += isClose;
         }
 
         if(norm[col] != 0) {
@@ -164,8 +155,10 @@ void LDDTCalculator::calculateLddtScores() {
                         if (align_idx2 == -1) {
                             continue;
                         }
-                        if (dists_to_score[query_idx1][query_idx2]) {
-                            float distance = dist(query_coordinates[query_idx1], query_coordinates[query_idx2]);
+                        // inclusion radius test of initQuery
+                        const float distance2 = dist2(query_coordinates[query_idx1], query_coordinates[query_idx2]);
+                        if (query_idx1 != query_idx2 && distance2 < CUTOFF_SQUARED) {
+                            float distance = sqrt(distance2);
                             float dist_sub = dist(target_coordinates[align_to_target[align_idx1]],
                                                   target_coordinates[align_to_target[align_idx2]]);
                             float d_l = std::abs(distance - dist_sub);

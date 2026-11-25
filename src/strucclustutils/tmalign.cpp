@@ -12,6 +12,9 @@
 #include "LoLAlign.h"
 #include "Coordinate16.h"
 
+#include <algorithm>
+#include <climits>
+
 #ifdef OPENMP
 #include <omp.h>
 #endif
@@ -309,6 +312,35 @@ int runStructureAligner(int argc, const char **argv, const Command& command, boo
 
 
     if (parallelQueries) {
+        // queries with the most query x target cells first, so no long query starts when the others are done
+        std::vector<size_t> queryOrder(resultReader.getSize());
+        std::vector<size_t> queryCells(resultReader.getSize(), 0);
+#pragma omp parallel for schedule(dynamic, 16)
+        for (size_t id = 0; id < resultReader.getSize(); id++) {
+            unsigned int thread_idx = 0;
+#ifdef OPENMP
+            thread_idx = static_cast<unsigned int>(omp_get_thread_num());
+#endif
+            queryOrder[id] = id;
+            const unsigned int queryId = qdbr.sequenceReader->getId(resultReader.getDbKey(id));
+            const size_t queryLen = qdbr.sequenceReader->getSeqLen(queryId);
+            char *data = resultReader.getData(id, thread_idx);
+            size_t targetResidues = 0;
+            while (*data != '\0') {
+                char dbKeyBuffer[256];
+                Util::parseKey(data, dbKeyBuffer);
+                const unsigned int dbKey = static_cast<unsigned int>(strtoul(dbKeyBuffer, NULL, 10));
+                const unsigned int targetId = tdbr->sequenceReader->getId(dbKey);
+                if (targetId != UINT_MAX) {
+                    targetResidues += tdbr->sequenceReader->getSeqLen(targetId);
+                }
+                data = Util::skipLine(data);
+            }
+            queryCells[id] = queryLen * targetResidues;
+        }
+        std::stable_sort(queryOrder.begin(), queryOrder.end(), [&queryCells](size_t a, size_t b) {
+            return queryCells[a] > queryCells[b];
+        });
 #pragma omp parallel
         {
             unsigned int thread_idx = 0;
@@ -329,7 +361,8 @@ int runStructureAligner(int argc, const char **argv, const Command& command, boo
             }
 
 #pragma omp for schedule(dynamic, 1)
-            for (size_t id = 0; id < resultReader.getSize(); id++) {
+            for (size_t k = 0; k < resultReader.getSize(); k++) {
+                const size_t id = queryOrder[k];
                 progress.updateProgress();
                 finalHits.clear();
                 resultBuffer.clear();

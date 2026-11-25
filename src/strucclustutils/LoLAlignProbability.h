@@ -44,8 +44,7 @@ public:
                   const int* qAln, const int* tAln, int nAln,
                   double evalue, double bits, double lddt,
                   int alnlen, int gapopen, int numGaps) {
-        buildAdjacency(targetLen, tx, ty, tz, tDeg, tEdgeS, tEdgeD, tEdgeBin);
-        buildResHist6(targetLen, tEdgeS, tEdgeD, tEdgeBin, tHist6);
+        const bool hasTargetEdges = buildTargetCounts(targetLen, tx, ty, tz, tAln, nAln);
 
         float feat[39];
         // --- BASE scalars (0..7) -------------------------------------------------
@@ -61,7 +60,7 @@ public:
         float h[NB];
         anfHist(qLen_, qDeg_, qEdgeS_, qEdgeD_, qAln, nAln, h);
         for (int i = 0; i < NB; ++i) feat[8 + i] = h[i];
-        anfHist(targetLen, tDeg, tEdgeS, tEdgeD, tAln, nAln, h);
+        anfFromCounts(targetLen, tDeg, tNAlnNb, tAmask, hasTargetEdges, h);
         for (int i = 0; i < NB; ++i) feat[15 + i] = h[i];
         // --- tamax (22..26) -----------------------------------------------------
         float tam[NSEP5];
@@ -84,7 +83,8 @@ private:
     std::vector<int>   qDeg_, qEdgeS_, qEdgeD_, qEdgeBin_;
     std::vector<float> qHist6_;   // qLen_ * NSEP6, row-major
     // target buffers of predict, reused across alignments
-    std::vector<int>   tDeg, tEdgeS, tEdgeD, tEdgeBin;
+    std::vector<int>   tDeg, tNAlnNb;
+    std::vector<char>  tAmask;
     std::vector<float> tHist6;
     std::vector<char>  amask;
     std::vector<int>   nAlnNb;
@@ -118,6 +118,50 @@ private:
         }
     }
 
+    // Target degree, row-normalized 6-bin seq-sep histogram and aligned neighbors in one pass over the pairs
+    // (what buildAdjacency, buildResHist6 and anfHist count from the edge list). Returns whether there is an edge.
+    bool buildTargetCounts(int N, const float* x, const float* y, const float* z, const int* aln, int nAln) {
+        tDeg.assign(N, 0); tNAlnNb.assign(N, 0); tAmask.assign(N, 0);
+        tHist6.assign((size_t)N * NSEP6, 0.0f);
+        for (int k = 0; k < nAln; ++k) { int a = aln[k]; if (a >= 0 && a < N) tAmask[a] = 1; }
+        const float R2 = RADIUS * RADIUS;
+        bool hasEdges = false;
+        for (int i = 0; i < N; ++i) {
+            for (int j = i + 1; j < N; ++j) {
+                float dx = x[i] - x[j], dy = y[i] - y[j], dz = z[i] - z[j];
+                if (dx * dx + dy * dy + dz * dz < R2) {   // dist < 20
+                    hasEdges = true;
+                    ++tDeg[i]; ++tDeg[j];
+                    int b = sepBin(i - j);
+                    tHist6[(size_t)i * NSEP6 + b] += 1.0f;
+                    tHist6[(size_t)j * NSEP6 + b] += 1.0f;
+                    tNAlnNb[i] += tAmask[j];
+                    tNAlnNb[j] += tAmask[i];
+                }
+            }
+        }
+        normalizeHist6(N, tHist6);
+        return hasEdges;
+    }
+    // ANF histogram from the degrees, aligned-neighbor counts and aligned-residue mask.
+    static void anfFromCounts(int N, const std::vector<int>& deg, const std::vector<int>& nAln,
+                              const std::vector<char>& mask, bool hasEdges, float* out) {
+        for (int i = 0; i < NB; ++i) out[i] = 0.0f;
+        if (deg.empty() || !hasEdges) return;
+        static const float EDGES[NB + 1] =
+            {0.0f, 0.25f, 0.5f, 0.6f, 0.7f, 0.8f, 0.9f, 1.0001f};
+        float tot = 0.0f;
+        for (int i = 0; i < N; ++i) {
+            if (!mask[i] || deg[i] <= 0) continue;
+            float frac = (float)nAln[i] / ((float)deg[i] + ANF_C);
+            int b = NB - 1;                          // last bin closed on the right
+            for (int k = 0; k < NB; ++k) {
+                if (frac >= EDGES[k] && frac < EDGES[k + 1]) { b = k; break; }
+            }
+            out[b] += 1.0f; tot += 1.0f;
+        }
+        if (tot > 0.0f) for (int i = 0; i < NB; ++i) out[i] /= tot;
+    }
     // Per-residue 6-bin seq-sep histogram, row-normalized. out: N*NSEP6.
     static void buildResHist6(int N, const std::vector<int>& es, const std::vector<int>& ed,
                               const std::vector<int>& eb, std::vector<float>& out) {
@@ -127,8 +171,12 @@ private:
             out[(size_t)es[e] * NSEP6 + b] += 1.0f;
             out[(size_t)ed[e] * NSEP6 + b] += 1.0f;
         }
+        normalizeHist6(N, out);
+    }
+    // Each residue's 6-bin row divided by its sum.
+    static void normalizeHist6(int N, std::vector<float>& hist) {
         for (int i = 0; i < N; ++i) {
-            float* row = &out[(size_t)i * NSEP6];
+            float* row = &hist[(size_t)i * NSEP6];
             float tot = 0.0f;
             for (int b = 0; b < NSEP6; ++b) tot += row[b];
             if (tot > 0.0f) for (int b = 0; b < NSEP6; ++b) row[b] /= tot;
@@ -149,19 +197,7 @@ private:
             nAlnNb[s] += amask[d];
             nAlnNb[d] += amask[s];
         }
-        static const float EDGES[NB + 1] =
-            {0.0f, 0.25f, 0.5f, 0.6f, 0.7f, 0.8f, 0.9f, 1.0001f};
-        float tot = 0.0f;
-        for (int i = 0; i < N; ++i) {
-            if (!amask[i] || deg[i] <= 0) continue;
-            float frac = (float)nAlnNb[i] / ((float)deg[i] + ANF_C);
-            int b = NB - 1;                          // last bin closed on the right
-            for (int k = 0; k < NB; ++k) {
-                if (frac >= EDGES[k] && frac < EDGES[k + 1]) { b = k; break; }
-            }
-            out[b] += 1.0f; tot += 1.0f;
-        }
-        if (tot > 0.0f) for (int i = 0; i < NB; ++i) out[i] /= tot;
+        anfFromCounts(N, deg, nAlnNb, amask, true, out);
     }
 
     static inline void to5(const float* h6, float* h5) {
